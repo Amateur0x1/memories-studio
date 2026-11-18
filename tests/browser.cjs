@@ -10,7 +10,7 @@ const {chromium} = require('playwright');
   try {
     const page=await browser.newPage({acceptDownloads:true});
     const errors=[];page.on('pageerror',e=>errors.push(e.message));
-    await page.goto(process.env.TEST_URL || pathToFileURL(resolve('index.html')).href);
+    await page.goto(process.env.TEST_URL || pathToFileURL(resolve('index.html')).href,{waitUntil:'domcontentloaded',timeout:90000});
     await page.locator('#play:not([disabled])').waitFor();
     assert.equal(await page.locator('#music,#name,#subtitle,#save,#load,#projectFile').count(),0);
     for (const width of [1600,1024,720,390,320]) {
@@ -34,7 +34,20 @@ const {chromium} = require('playwright');
     await page.locator('#batch').setInputFiles(fixtures.map((b,i)=>({name:i?'portrait.png':'landscape.png',mimeType:'image/png',buffer:Buffer.from(b,'base64')})));
     await page.waitForFunction(()=>document.querySelector('.photo-card span').textContent.includes('landscape.png'));
     await page.locator('#seek').fill('2.5');await page.locator('#seek').dispatchEvent('input');
-    assert.deepEqual(await page.locator('#left').evaluate(el=>[getComputedStyle(el).objectFit,getComputedStyle(el).objectPosition]),['cover','50% 50%']);
+    assert.deepEqual(await page.locator('#left').evaluate(el=>[getComputedStyle(el).objectFit,getComputedStyle(el).objectPosition]),['contain','50% 50%']);
+    await page.waitForFunction(()=>document.getElementById('left').naturalWidth===1200);
+    const landscape = await page.locator('#left').evaluate(el=>({ratio:el.offsetWidth/el.offsetHeight,mask:getComputedStyle(el).maskImage}));
+    assert.equal(landscape.ratio,2); assert.match(landscape.mask,/data:image\/png/);
+    const feather = await page.locator('#left').evaluate(async el=>{
+      const image=new Image();image.src=el.style.maskImage.slice(5,-2);await image.decode();
+      const c=document.createElement('canvas');c.width=image.naturalWidth;c.height=image.naturalHeight;
+      const ctx=c.getContext('2d');ctx.drawImage(image,0,0);
+      return [ctx.getImageData(0,c.height/2,1,1).data[3],ctx.getImageData(8,c.height/2,1,1).data[3],ctx.getImageData(c.width/2,c.height/2,1,1).data[3]];
+    });
+    assert.ok(feather[0]>0 && feather[0]<feather[1] && feather[1]<feather[2] && feather[2]===255,'feather must fade only at the edge');
+    await page.locator('#seek').fill('3.5');await page.locator('#seek').dispatchEvent('input');
+    await page.waitForFunction(()=>document.getElementById('left').naturalWidth===600);
+    assert.equal(await page.locator('#left').evaluate(el=>el.offsetWidth/el.offsetHeight),.5);
     await page.waitForFunction(()=>document.getElementById('status').textContent.includes('自动保存'));
     await page.reload();await page.waitForFunction(()=>document.getElementById('status').textContent.includes('恢复上次'));
     assert.match(await page.locator('.photo-card span').first().textContent(),/landscape.png/);
@@ -53,6 +66,6 @@ const {chromium} = require('playwright');
     await page.locator('#seek').fill('3');await page.locator('#seek').dispatchEvent('input');
     await page.screenshot({path:'test-results/studio.png',fullPage:true});
     assert.deepEqual(errors,[]);
-    console.log('Passed: responsive preview, landscape/portrait crops, persistence, playback, cancellation, full video export.');
+    console.log('Passed: responsive preview, landscape/portrait aspect ratios and feather masks, persistence, playback, cancellation, full video export.');
   } finally {await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

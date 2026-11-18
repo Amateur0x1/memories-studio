@@ -10,3 +10,4 @@ footer .privacy{max-width:520px;text-align:right}
 .source-link{font-size:12px;color:#516b50;text-decoration:none;margin-right:12px}
 .disabled{opacity:.4;pointer-events:none}
 @media(max-width:720px){.workspace{padding:18px 14px}.stage-wrap{padding:8px}footer{padding:0 14px 20px;display:block}footer .privacy{text-align:left}.source-link{margin-right:2px;font-size:11px}.brand span{display:none}}
+.photo-card img{object-fit:contain;background:#1c1b18}

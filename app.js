@@ -22,6 +22,57 @@
   }
   new ResizeObserver(resizePreview).observe($('stage'));
 
+  const photoImages = new Map();
+  const featherMasks = new Map();
+  const photoLayers = new Map();
+  function photoImage(photo) {
+    if (!photoImages.has(photo.src)) {
+      const image = new Image();
+      image.onload = () => {
+        for (const id of ['left', 'right']) {
+          const el = $(id);
+          if (el.getAttribute('src') === photo.src) layoutPhoto(el, image);
+        }
+      };
+      image.src = photo.src;
+      photoImages.set(photo.src, image);
+    }
+    return photoImages.get(photo.src);
+  }
+  function featherMask(width, height) {
+    const key = `${width}x${height}`;
+    if (!featherMasks.has(key)) {
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      // Blur only the alpha mask: the photograph itself stays sharp.
+      const inset = Math.min(8, width / 12, height / 12);
+      const radius = Math.min(56, width * .17, height * .17);
+      ctx.filter = `blur(${Math.min(6, inset * .75)}px)`;
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.roundRect(inset, inset, width - inset * 2, height - inset * 2, radius);
+      ctx.fill();
+      featherMasks.set(key, {canvas, url:canvas.toDataURL()});
+    }
+    return featherMasks.get(key);
+  }
+  function layoutPhoto(el, image) {
+    if (!image.naturalWidth) return;
+    // Each half of the scene is a safe area, not a crop window.
+    const scale = Math.min(448 / image.naturalWidth, 512 / image.naturalHeight);
+    const width = Math.max(1, Math.round(image.naturalWidth * scale));
+    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const key = `${width}x${height}`;
+    if (el.dataset.photoSize === key) return;
+    el.dataset.photoSize = key;
+    el.style.width = `${width}px`; el.style.height = `${height}px`;
+    el.style.left = `${(el.id === 'left' ? 240 : 720) - width / 2}px`;
+    el.style.top = `${316 - height / 2}px`;
+    el.style.maskImage = `url(${featherMask(width, height).url})`;
+    el.style.webkitMaskImage = el.style.maskImage;
+  }
+
   function render(t) {
     time = Math.max(0, Math.min(duration, t));
     timeline.seek(time);
@@ -30,6 +81,7 @@
     for (const [id, p] of [['left', photos[k % 14]], ['right', photos[(k + 7) % 14]]]) {
       const el = $(id);
       if (el.getAttribute('src') !== p.src) el.src = p.src;
+      layoutPhoto(el, photoImage(p));
       el.style.objectPosition = '50% 50%';
       el.style.opacity = time >= 2 ? 1 : 0;
       const shift = 14 * (1 - Math.min(1, Math.max(0, (time - MOTION.cuts[k]) / .22))) ** 3;
@@ -75,9 +127,11 @@
     }, 400);
   }
   function refresh() {
+    photoImages.clear(); photoLayers.clear();
     $('photos').replaceChildren();
     $('ring').replaceChildren();
     photos.forEach((p, i) => {
+      photoImage(p);
       const card = document.createElement('button');
       card.className = 'photo-card';
       card.title = `替换第 ${i + 1} 张照片`;
@@ -154,7 +208,20 @@
     ctx.translate(ox, oy);
     if (style.transform !== 'none') { const m = new DOMMatrix(style.transform); ctx.transform(m.a,m.b,m.c,m.d,m.e,m.f); }
     ctx.translate(-ox, -oy);
-    if (el instanceof HTMLImageElement) {
+    if (el instanceof HTMLImageElement && el.classList.contains('photo')) {
+      const width = el.offsetWidth, height = el.offsetHeight;
+      const key = `${el.getAttribute('src')}:${width}x${height}`;
+      if (!photoLayers.has(key)) {
+        const layer = document.createElement('canvas'); layer.width = width; layer.height = height;
+        const layerCtx = layer.getContext('2d');
+        const image = photoImages.get(el.getAttribute('src')) || el;
+        layerCtx.drawImage(image, 0, 0, width, height);
+        layerCtx.globalCompositeOperation = 'destination-in';
+        layerCtx.drawImage(featherMask(width, height).canvas, 0, 0);
+        photoLayers.set(key, layer);
+      }
+      ctx.drawImage(photoLayers.get(key), 0, 0);
+    } else if (el instanceof HTMLImageElement) {
       const radius = parseFloat(style.borderTopLeftRadius) || 0;
       ctx.beginPath(); ctx.roundRect(0,0,el.offsetWidth,el.offsetHeight,radius); ctx.clip();
       if (style.objectFit === 'cover') drawCover(ctx, el, el.offsetWidth, el.offsetHeight);
@@ -205,7 +272,7 @@
       status('正在准备视频与固定配乐…');
       await Promise.all(Array.from(document.querySelectorAll('#root img')).map(img => img.decode()));
       // Preload every photo so switching slots never produces an empty export frame.
-      await Promise.all(photos.map(async p => { const img = new Image(); img.src = p.src; await img.decode(); }));
+      await Promise.all(photos.map(p => photoImage(p).decode()));
       await document.fonts.ready;
       if (cancelled) return;
       const canvas = document.createElement('canvas'); canvas.width=960;canvas.height=720;
