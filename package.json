@@ -1,0 +1,22 @@
+{
+  "name": "memories-studio",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A local-first photo album studio with a retro View-Master animation and video export.",
+  "license": "MIT",
+  "author": "amateur0x1 <amateur11m11d@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Amateur0x1/memories-studio.git"
+  },
+  "scripts": {
+    "dev": "npm run build && wrangler pages dev public",
+    "build": "node scripts/build.mjs",
+    "deploy": "npm run build && wrangler pages deploy public --project-name memories-studio --branch main",
+    "test": "node tests/browser.cjs"
+  },
+  "devDependencies": {
+    "playwright": "1.58.2",
+    "wrangler": "4.164.0"
+  }
+}

@@ -1,0 +1,11 @@
+.DS_Store
+node_modules/
+public/
+.wrangler/
+.env
+.env.*
+.dev.vars
+*.log
+test-results/
+memories.mp4
+memories.webm
